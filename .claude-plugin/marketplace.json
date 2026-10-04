@@ -1,0 +1,7 @@
+{
+  "name": "ultracode-gpt",
+  "owner": { "name": "Rolf" },
+  "plugins": [
+    { "name": "ultracode-gpt", "source": "./plugin", "description": "GPT mode for ultracode: Workflow agents on GPT through pi." }
+  ]
+}

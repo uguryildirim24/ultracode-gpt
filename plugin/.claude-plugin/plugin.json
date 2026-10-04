@@ -1,0 +1,46 @@
+{
+  "name": "ultracode-gpt",
+  "version": "0.1.0",
+  "description": "GPT mode for ultracode: Workflow agent() calls run on GPT through pi instead of Claude subagents.",
+  "author": { "name": "Rolf", "url": "https://github.com/uguryildirim24" },
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "GPT mode",
+      "description": "marked: only agents with agentType 'ultracode-gpt:gpt' run on GPT. all: every Workflow agent does. off: none.",
+      "options": ["marked", "all", "off"],
+      "default": "marked"
+    },
+    "model": {
+      "type": "string",
+      "title": "GPT model",
+      "description": "pi model id on the openai-codex provider (or provider/id).",
+      "default": "gpt-6.1-sol"
+    },
+    "thinking": {
+      "type": "string",
+      "title": "GPT thinking level",
+      "description": "pi thinking level for GPT agents.",
+      "options": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+      "default": "medium"
+    },
+    "webSearch": {
+      "type": "boolean",
+      "title": "GPT web search",
+      "description": "Give GPT agents OpenAI's hosted web search.",
+      "default": true
+    },
+    "webFetch": {
+      "type": "boolean",
+      "title": "GPT web fetch",
+      "description": "Give GPT agents a web_fetch tool (HTTP GET, page as text).",
+      "default": true
+    },
+    "piPath": {
+      "type": "string",
+      "title": "pi command",
+      "description": "The pi executable GPT mode runs.",
+      "default": "pi"
+    }
+  }
+}
