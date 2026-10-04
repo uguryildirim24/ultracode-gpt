@@ -1,7 +1,14 @@
 {
   "name": "ultracode-gpt",
-  "owner": { "name": "Rolf" },
+  "owner": {
+    "name": "Rolf"
+  },
+  "description": "GPT mode for ultracode: Workflow agents on GPT through pi.",
   "plugins": [
-    { "name": "ultracode-gpt", "source": "./plugin", "description": "GPT mode for ultracode: Workflow agents on GPT through pi." }
+    {
+      "name": "ultracode-gpt",
+      "source": "./plugin",
+      "description": "GPT mode for ultracode: Workflow agents on GPT through pi."
+    }
   ]
 }
