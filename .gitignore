@@ -1,1 +1,3 @@
 .claude/settings.local.json
+plugin/.claude-plugin/types/
+plugin/tsconfig.json

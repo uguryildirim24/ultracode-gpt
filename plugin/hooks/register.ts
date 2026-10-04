@@ -47,7 +47,6 @@ function showRunning($: any) {
 async function runPi($: any, s: Settings, a: Agent, feedback?: string): Promise<PiRun> {
   const run = new PiRun()
   const plan = piPlan(s, `${$.plugin.root}/pi`, piPrompt(a.mark!.prompt, a.relay, feedback), a.mark!.schema)
-  let stderr = ''
   running++
   showRunning($)
   try {
@@ -60,11 +59,11 @@ async function runPi($: any, s: Settings, a: Agent, feedback?: string): Promise<
         break
       }
       if (piece.value.stream === 'stdout') run.feed(piece.value.text)
-      else if (stderr.length < 4000) stderr += piece.value.text
+      else if (run.stderr.length < 4000) run.stderr += piece.value.text
     }
     run.end()
     if (ended && ended.code !== 0 && !run.answer && !run.hasStructured) {
-      run.error = run.error ?? `pi exited ${ended.code ?? ended.signal}: ${stderr.trim().slice(0, 600)}`
+      run.error = run.error ?? `pi exited ${ended.code ?? ended.signal}: ${run.stderr.trim().slice(0, 600)}`
     }
   } catch (err) {
     run.error = `pi could not run (${s.pi}): ${String(err)}`
@@ -204,7 +203,8 @@ export const register: Register = (on, options) => {
     const text = run.error
       ? `GPT MODE ERROR: ${run.error}`
       : schema
-        ? `GPT MODE ERROR: the GPT agent ended without calling structured_output. Its last text: ${run.answer.slice(0, 2000)}`
+        ? `GPT MODE ERROR: the GPT agent ended without calling structured_output. Its last text: ${run.answer.slice(0, 2000)}` +
+          (run.stderr.trim() ? `\npi stderr: ${run.stderr.trim().slice(-600)}` : '')
         : run.answer || 'GPT MODE ERROR: the GPT agent ended with no answer.'
     if (run.error || (schema && !run.hasStructured)) $.ui.toast(text.slice(0, 200))
     a.answer = text

@@ -40,6 +40,8 @@ describe('the Workflow script rewrite', () => {
     expect(rewriteScript(rewriteScript(SCRIPT, 'marked')!, 'marked')).toBe(null)
     expect(rewriteScript(SCRIPT, 'off')).toBe(null)
     expect(rewriteScript('return 1', 'marked')).toBe(null)
+    expect(rewriteScript("export const meta = { name: 'x' }\nreturn await agent('hi')", 'marked')).toBe(null)
+    expect(rewriteScript("export const meta = { name: 'x' }\nreturn await agent('hi')", 'all')).toContain('__ucgptAgent')
   })
 })
 

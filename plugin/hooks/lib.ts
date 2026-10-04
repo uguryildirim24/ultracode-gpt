@@ -74,11 +74,13 @@ export function metaEnd(script: string): number {
  * task row carries and the turn.step hook reads. `agent` is shadowed in a
  * block around the body, so the script's own text is untouched.
  *
- * Returns null when there is nothing to do: mode off, already rewritten, or
- * no `export const meta` literal to place the shim after.
+ * Returns null when there is nothing to do: mode off, already rewritten, a
+ * marked-mode script that never names the GPT type, or no `export const meta`
+ * literal to place the shim after. Untouched scripts keep their resume cache.
  */
 export function rewriteScript(script: string, mode: Mode): string | null {
   if (mode === 'off' || script.includes(SHIM_TAG)) return null
+  if (mode === 'marked' && !script.includes(AGENT_TYPE)) return null
   const end = metaEnd(script)
   if (end < 0) return null
   const all = mode === 'all'
@@ -204,6 +206,7 @@ export class PiRun {
   structured: unknown = undefined
   hasStructured = false
   error: string | undefined
+  stderr = ''
   toolCalls = 0
   private buffer = ''
 
