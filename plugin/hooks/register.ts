@@ -1,6 +1,22 @@
 import type { Register } from 'claude-code'
-import { AGENT_TYPE, PiRun, gptModelId, piPlan, piPrompt, readHarnessRow, readMark, readSettings, rewriteScript, rowText } from './lib.ts'
+import { AGENT_TYPE, PI_TOOL, PiRun, gptModelId, mirrorInput, piPlan, piPrompt, readHarnessRow, readMark, readSettings, rewriteScript, rowText } from './lib.ts'
 import type { Marked, Settings } from './lib.ts'
+
+// One pi run behind a GPT agent. It outlives the step that started it: each
+// later step, and each mirrored tool call, reads it on by pulling the child
+// itself. A pull is a `$` call, which a hook's budget doesn't count; awaiting
+// a promise another hook resolves would count, and drop the hook at 10 s.
+type Live = {
+  run: PiRun
+  child: any
+  closed: boolean
+  steps: number
+  chars: number
+  mirroring: boolean
+  calls: Map<string, string>
+  served: Set<string>
+  last: string[]
+}
 
 // One workflow agent as GPT mode follows it, keyed by its agentId. Filled from
 // the rows the agent is given (session.append), answered at its turn.step.
@@ -12,7 +28,9 @@ type Agent = {
   attempts: number
   answer?: string
   structured?: unknown
+  structuredId?: string
   rejected?: string
+  live?: Live
 }
 
 const agents = new Map<string, Agent>()
@@ -22,6 +40,14 @@ const MISS_TEXT = 'GPT MODE MISS: the ultracode-gpt hook did not answer this age
 const MISS_PROMPT =
   'You stand in for a GPT agent of ultracode GPT mode, whose hook did not take this run. ' +
   `Do no work. Reply with exactly: ${MISS_TEXT}`
+const PI_TOOL_DESCRIPTION =
+  'Internal to ultracode GPT mode: records one step of a GPT agent running on pi, so its transcript shows ' +
+  'what pi is doing. Never call it: it refuses every call but those GPT mode makes itself.'
+const PI_TOOL_REFUSAL = 'The pi tool only records the steps of a GPT mode agent; it takes no other calls.'
+// A GPT agent's steps mirrored into its transcript at most: past either, the
+// agent waits for pi's answer as it did before steps were mirrored.
+const MAX_MIRRORED_STEPS = 100
+const MAX_MIRRORED_CHARS = 150_000
 const OFF_PROMPT =
   'You are an agent of a Claude Code workflow script. Complete the task you are given with your tools; ' +
   'your final message is returned to the script as your result.'
@@ -30,7 +56,14 @@ async function registerType($: any, s: Settings) {
   await $.agent.register(
     s.mode === 'off'
       ? { name: 'gpt', description: 'GPT mode is off: runs this workflow agent on Claude.', prompt: OFF_PROMPT, model: 'inherit' }
-      : { name: 'gpt', description: 'Runs this workflow agent on GPT through pi (ultracode GPT mode). Workflow scripts only.', prompt: MISS_PROMPT, model: gptModelId(s) },
+      : {
+          name: 'gpt',
+          description: 'Runs this workflow agent on GPT through pi (ultracode GPT mode). Workflow scripts only.',
+          prompt: MISS_PROMPT,
+          model: gptModelId(s),
+          // Room for every mirrored step of up to three pi runs (a schema agent's retries).
+          maxTurns: 4 * (MAX_MIRRORED_STEPS + 1),
+        },
   )
 }
 
@@ -44,35 +77,72 @@ function showRunning($: any) {
   $.ui.status(running > 0 ? `GPT mode: ${running} agent${running === 1 ? '' : 's'} on pi` : undefined)
 }
 
-/** Runs pi for one agent, to the end, and reads what it came to. */
-async function runPi($: any, s: Settings, a: Agent, feedback?: string): Promise<PiRun> {
-  const run = new PiRun()
+/** Starts pi for one agent; the steps that follow read it on. */
+function startPi($: any, s: Settings, a: Agent, feedback?: string): Live {
   const plan = piPlan(s, `${$.plugin.root}/pi`, piPrompt(a.mark!.prompt, a.relay, feedback), a.mark!.schema)
+  const live: Live = { run: new PiRun(), child: undefined, closed: false, steps: 0, chars: 0, mirroring: true, calls: new Map(), served: new Set(), last: [] }
   running++
   showRunning($)
   try {
-    const child = $.process.spawn({ argv: plan.argv, cwd: a.cwd, env: plan.env })
-    let ended: { code: number | null; signal: string | null } | undefined
-    while (true) {
-      const piece = await child.next()
-      if (piece.done) {
-        ended = piece.value
-        break
-      }
-      if (piece.value.stream === 'stdout') run.feed(piece.value.text)
-      else if (run.stderr.length < 4000) run.stderr += piece.value.text
-    }
-    run.end()
-    if (ended && ended.code !== 0 && !run.answer && !run.hasStructured) {
-      run.error = run.error ?? `pi exited ${ended.code ?? ended.signal}: ${run.stderr.trim().slice(0, 600)}`
-    }
+    live.child = $.process.spawn({ argv: plan.argv, cwd: a.cwd, env: plan.env })
   } catch (err) {
-    run.error = `pi could not run (${s.pi}): ${String(err)}`
-  } finally {
-    running--
-    showRunning($)
+    finish($, s, live, undefined, err)
   }
-  return run
+  return live
+}
+
+/** pi is over: reads what it came to, once. */
+function finish($: any, s: Settings, live: Live, ended?: { code: number | null; signal: string | null }, failed?: unknown) {
+  if (live.closed) return
+  live.closed = true
+  const run = live.run
+  run.end()
+  if (failed !== undefined) run.error = `pi could not run (${s.pi}): ${String(failed)}`
+  else if (ended && ended.code !== 0 && !run.answer && !run.hasStructured) {
+    run.error = run.error ?? `pi exited ${ended.code ?? ended.signal}: ${run.stderr.trim().slice(0, 600)}`
+  }
+  running--
+  showRunning($)
+}
+
+/** Stops pi: its agent was stopped, or ended without waiting for it. */
+function kill($: any, s: Settings, live: Live) {
+  if (live.closed) return
+  try {
+    Promise.resolve(live.child?.return(undefined)).catch(() => {})
+  } catch {}
+  live.run.error = live.run.error ?? 'the GPT agent was stopped'
+  finish($, s, live)
+}
+
+/**
+ * Reads pi on until `ready()` holds or pi is over. False when `signal`
+ * aborted first, and pi is stopped: the agent it ran for was.
+ */
+async function waitFor($: any, s: Settings, live: Live, ready: () => boolean, signal: AbortSignal): Promise<boolean> {
+  const stop = new Promise<'stop'>(resolve => {
+    if (signal.aborted) resolve('stop')
+    else signal.addEventListener('abort', () => resolve('stop'), { once: true })
+  })
+  while (!ready() && !live.closed) {
+    let piece: any
+    try {
+      const pull = live.child.next()
+      pull.catch(() => {})
+      piece = await Promise.race([pull, stop])
+    } catch (err) {
+      finish($, s, live, undefined, err)
+      break
+    }
+    if (piece === 'stop') {
+      kill($, s, live)
+      return false
+    }
+    if (piece.done) finish($, s, live, piece.value)
+    else if (piece.value.stream === 'stdout') live.run.feed(piece.value.text)
+    else if (live.run.stderr.length < 4000) live.run.stderr += piece.value.text
+  }
+  return !signal.aborted
 }
 
 export const register: Register = (on, options) => {
@@ -81,6 +151,17 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await registerType($, s)
+    if (s.mode !== 'off') {
+      try {
+        await $.tool.register({
+          name: 'pi',
+          description: PI_TOOL_DESCRIPTION,
+          inputSchema: { type: 'object', properties: { call: { type: 'string' }, args: {} }, required: ['call'] },
+        })
+      } catch (err) {
+        $.ui.log(`GPT mode: the pi tool did not register (${String(err)}); GPT agents won't show pi's steps.`, { to: 'debug' })
+      }
+    }
     await $.command.register({
       name: 'gpt-mode',
       description: 'GPT mode for Workflow agents: show status, or set marked | all | off.',
@@ -141,11 +222,12 @@ export const register: Register = (on, options) => {
     if (id && (e.door === 'prompt' || e.door === 'attachment' || e.door === 'tool-result')) {
       const text = rowText(e.message)
       if (e.door === 'tool-result') {
+        // The workflow's verdict on the StructuredOutput call; mirrored pi steps' results pass by.
         const a = agents.get(id)
-        if (a?.mark?.schema && a.answered) {
+        if (a?.mark?.schema && a.answered && a.structuredId) {
           const blocks = Array.isArray(e.message.content) ? e.message.content : []
-          const failed = blocks.find((b: any) => b?.type === 'tool_result' && b.is_error)
-          a.rejected = failed ? JSON.stringify(failed.content).slice(0, 2000) : undefined
+          const verdict = blocks.find((b: any) => b?.type === 'tool_result' && b.tool_use_id === a.structuredId)
+          if (verdict) a.rejected = verdict.is_error ? JSON.stringify(verdict.content).slice(0, 2000) : undefined
         }
       } else {
         const row = readHarnessRow(text)
@@ -182,26 +264,71 @@ export const register: Register = (on, options) => {
     }
     const schema = a.mark.schema
 
-    // A later step: the structured answer was taken, or rejected and worth one more try.
-    if (a.answered && !(schema && a.rejected && a.attempts < 3)) {
-      const text = schema ? 'Structured output delivered.' : a.answer ?? ''
-      yield { kind: 'text', index: 0, text }
-      yield { kind: 'stop', stopReason: 'end_turn', usage: null }
-      return done(text, [], 'end_turn')
+    if (!a.live) {
+      // A later step: the structured answer was taken, or rejected and worth one more try.
+      if (a.answered && !(schema && a.rejected && a.attempts < 3)) {
+        const text = schema ? 'Structured output delivered.' : a.answer ?? ''
+        yield { kind: 'text', index: 0, text }
+        yield { kind: 'stop', stopReason: 'end_turn', usage: null }
+        return done(text, [], 'end_turn')
+      }
+      const feedback = a.rejected
+        ? `Your previous structured_output was rejected by the workflow's schema check: ${a.rejected}\n` +
+          `Previous value: ${JSON.stringify(a.structured)}\nCall structured_output again with a corrected value.`
+        : undefined
+      a.attempts++
+      a.live = startPi($, s, a, feedback)
+    }
+    const live = a.live
+
+    // Calls of the last step the engine never handed to the pi tool: it isn't
+    // in this agent's reach. Stop mirroring; the agent waits for pi's answer.
+    if (live.mirroring && live.last.some(id => !live.served.has(id))) {
+      live.mirroring = false
+      $.ui.toast("GPT mode: an agent's pi steps can't be shown here; it answers when pi ends.")
+    }
+    live.last = []
+    const mirrors = () => live.mirroring && live.steps < MAX_MIRRORED_STEPS && live.chars < MAX_MIRRORED_CHARS
+    const ready = () => {
+      if (!mirrors()) live.run.turns.length = 0
+      return live.run.turns.length > 0
+    }
+    if (!(await waitFor($, s, live, ready, next.signal))) return done('', [], 'end_turn')
+
+    // pi called tools: that turn is this step, its calls answered by the pi tool.
+    const turn = live.run.turns.shift()
+    if (turn) {
+      live.steps++
+      live.chars += turn.text.length
+      const toolUses: { name: string; input: unknown }[] = []
+      let block = 0
+      if (turn.text) yield { kind: 'text', index: block++, text: turn.text }
+      for (const [i, call] of turn.calls.entries()) {
+        const id = `toolu_ucgpt_${e.agentId}_${e.index}_${i}`
+        const input = mirrorInput(call)
+        const json = JSON.stringify(input)
+        live.calls.set(id, call.id)
+        live.last.push(id)
+        live.chars += json.length
+        yield { kind: 'tool', index: block, id, name: PI_TOOL }
+        yield { kind: 'input', index: block, json }
+        block++
+        toolUses.push({ name: PI_TOOL, input })
+      }
+      yield { kind: 'stop', stopReason: 'tool_use', usage: null }
+      return done(turn.text, toolUses, 'tool_use')
     }
 
-    const feedback = a.rejected
-      ? `Your previous structured_output was rejected by the workflow's schema check: ${a.rejected}\n` +
-        `Previous value: ${JSON.stringify(a.structured)}\nCall structured_output again with a corrected value.`
-      : undefined
-    a.attempts++
-    const run = await runPi($, s, a, feedback)
+    // pi ended: its answer is this step's.
+    a.live = undefined
     a.answered = true
     a.rejected = undefined
+    const run = live.run
 
     if (schema && run.hasStructured) {
       a.structured = run.structured
       const id = `toolu_ucgpt_${e.agentId}_${e.index}`
+      a.structuredId = id
       const input = run.structured ?? {}
       yield { kind: 'tool', index: 0, id, name: 'StructuredOutput' }
       yield { kind: 'input', index: 0, json: JSON.stringify(input) }
@@ -222,8 +349,30 @@ export const register: Register = (on, options) => {
     return done(text, [], 'end_turn')
   })
 
+  // The pi tool: a GPT agent's mirrored call, answered with what pi's tool
+  // returned, once it has. Calls from anywhere else are refused.
+  on('tool.call', { tool: 'mcp__ultracode-gpt__pi' }, async ($, e, next) => {
+    const live = e.agentId ? agents.get(e.agentId)?.live : undefined
+    const piId = live?.calls.get(e.tool_use_id)
+    if (!live || !piId) return { deny: PI_TOOL_REFUSAL }
+    live.served.add(e.tool_use_id)
+    await waitFor($, s, live, () => live.run.results.has(piId), next.signal)
+    const r = live.run.results.get(piId)
+    const text = r ? (r.isError ? `Error: ${r.text}` : r.text || '(no output)') : 'pi ended before this tool finished.'
+    live.chars += text.length
+    return { result: text }
+  })
+
+  // Keep the pi tool's schema in the list, so a mirrored call is never one
+  // the agent would first have to load through ToolSearch.
+  on('tool.describe', { tool: 'mcp__ultracode-gpt__pi' }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false }))
+
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId) agents.delete(e.agentId)
+    if (e.agentId) {
+      const live = agents.get(e.agentId)?.live
+      if (live) kill($, s, live)
+      agents.delete(e.agentId)
+    }
     return next(e)
   })
 }

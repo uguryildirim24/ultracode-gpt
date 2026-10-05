@@ -133,9 +133,31 @@ read through `$.session.messages`. What a mod does see:
    `agentId`: the relayed user request, the computed task (with the mark), and
    the environment row (its working directory).
 3. `turn.step`: when a marked agent's loop makes its first model request, the
-   hook answers it alone. It runs `pi -p --mode json` in the agent's directory,
-   then yields pi's final text (stop `end_turn`), or a `StructuredOutput` tool
-   call for a schema agent. The request never reaches Claude.
+   hook answers it alone and starts `pi -p --mode json` in the agent's
+   directory. The request never reaches Claude.
+4. Each pi turn that calls tools becomes one step of the agent: the hook
+   answers the next request with pi's text and one call per pi tool call to the
+   mod's `pi` tool (`mcp__ultracode-gpt__pi`, input `{ call, args }`). The
+   engine runs that call; the mod's `tool.call` hook answers it with what pi's
+   tool returned, once it has. So the agent's transcript, and `/workflows`,
+   show pi working as they show a Claude agent: one row per tool call, filled
+   in when it finishes.
+5. When pi ends, the next step yields pi's final text (stop `end_turn`), or a
+   `StructuredOutput` call for a schema agent.
+
+pi outlives the step that started it. Each later step and each `pi` tool call
+reads it on by pulling the child process's stream itself: a pull is a `$`
+call, which a hook's 10 s budget doesn't count, where waiting on a promise
+another hook resolves would count and get the hook dropped. A step the person
+stops kills pi, and so does the agent's `turn.complete`.
+
+Mirroring stops after 100 steps or 150k characters per pi run, to keep the
+agent's context small (nothing reads it, but a full context would trigger
+compaction); the agent then waits for pi's answer. It also stops, with a
+toast, if the engine doesn't hand a mirrored call to the `pi` tool (the tool
+isn't in that agent's reach): the agent then answers when pi ends, as before.
+The `pi` tool refuses every call GPT mode didn't make, and its schema stays in
+the tool list rather than behind ToolSearch.
 
 The registered agent type `ultracode-gpt:gpt` exists so Workflow accepts the
 name. Its `model` is the GPT model's id (`gpt-6.1-sol`, or whatever `GPT model`
@@ -150,8 +172,10 @@ Claude.
 
 - Named workflows (`Workflow({ name })`) and nested `workflow()` children
   aren't rewritten, so their agents stay on Claude.
-- GPT agents don't stream progress into `/workflows`; the status line shows
-  how many are running on pi. Token use isn't reported back to Claude Code.
+- Token use isn't reported back to Claude Code (`usage` stays null), so
+  `/workflows` shows no token count for GPT agents and the session's cost
+  isn't charged for them.
+- pi's thinking isn't shown; a long think before a tool call shows no new row.
 - The harness rows it reads (`[Workflow harness — computed task]` and the
   environment row) are the engine's wording, not an API. A Claude Code update
   that rewords them would stop the mod from finding its mark; agents would then

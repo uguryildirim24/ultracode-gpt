@@ -205,7 +205,41 @@ export function piPlan(s: Settings, extensionDir: string, prompt: string, schema
   return { argv, env }
 }
 
-/** What a pi run came to, read off its JSONL as it streams. */
+/** The most of one tool result or one step's text a mirrored row carries. */
+export const MIRROR_TEXT_MAX = 2000
+
+/** `text` cut to `max` characters, saying how much was left out. */
+export function clip(text: string, max = MIRROR_TEXT_MAX): string {
+  return text.length <= max ? text : `${text.slice(0, max)}… [${text.length - max} more chars]`
+}
+
+/** One tool call pi's model made: pi's own id, the tool, its arguments. */
+export type PiCall = { id: string; name: string; args: unknown }
+
+/** The tool a GPT agent's mirrored pi steps call: `pi`, as the plugin registers it. */
+export const PI_TOOL = 'mcp__ultracode-gpt__pi'
+
+/**
+ * The pi tool's input for one of pi's calls: which tool pi called, and its
+ * arguments unless they're long. (Not `tool`: `tool.call` spreads the input
+ * beside its own `tool`, the name of the tool called.)
+ */
+export function mirrorInput(call: PiCall): { call: string; args: unknown } {
+  const args = JSON.stringify(call.args ?? {}) ?? '{}'
+  return { call: call.name, args: args.length <= MIRROR_TEXT_MAX ? call.args ?? {} : clip(args) }
+}
+
+/** One pi turn that called tools: the turn's text and its calls, in order. */
+export type PiTurn = { text: string; calls: PiCall[] }
+
+export type PiToolResult = { text: string; isError: boolean }
+
+/**
+ * What a pi run came to, read off its JSONL as it streams: the answer, and
+ * along the way each turn that called tools (`turns`, oldest first, taken by
+ * whoever mirrors them) and each tool's result by pi's call id (`results`).
+ * `structured_output` calls are the answer, not steps, and are not queued.
+ */
 export class PiRun {
   answer = ''
   structured: unknown = undefined
@@ -213,6 +247,8 @@ export class PiRun {
   error: string | undefined
   stderr = ''
   toolCalls = 0
+  turns: PiTurn[] = []
+  results = new Map<string, PiToolResult>()
   private buffer = ''
 
   feed(text: string): void {
@@ -243,6 +279,9 @@ export class PiRun {
         this.structured = event.result?.details?.value
         this.hasStructured = true
       }
+      if (typeof event.toolCallId === 'string') {
+        this.results.set(event.toolCallId, { text: clip(contentText(event.result?.content)), isError: event.isError === true })
+      }
     }
     if (event?.type === 'message_end' && event.message?.role === 'assistant') {
       const m = event.message
@@ -250,13 +289,23 @@ export class PiRun {
         this.error = String(m.errorMessage || m.stopReason)
         return
       }
-      const text = Array.isArray(m.content)
-        ? m.content.filter((b: any) => b?.type === 'text').map((b: any) => String(b.text ?? '')).join('')
-        : ''
+      const blocks: any[] = Array.isArray(m.content) ? m.content : []
+      const text = blocks.filter(b => b?.type === 'text').map(b => String(b.text ?? '')).join('')
       if (text.trim()) {
         this.answer = text
         this.error = undefined
       }
+      const calls = blocks
+        .filter(b => b?.type === 'toolCall' && typeof b.id === 'string' && b.name !== 'structured_output')
+        .map(b => ({ id: b.id as string, name: String(b.name), args: b.arguments ?? {} }))
+      if (calls.length) this.turns.push({ text: clip(text.trim()), calls })
     }
   }
+}
+
+/** The text blocks of a pi tool result's content, joined. */
+function contentText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content.filter(b => b?.type === 'text').map(b => String(b.text ?? '')).join('\n')
 }
