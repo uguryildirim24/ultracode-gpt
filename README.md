@@ -86,9 +86,12 @@ claude plugin marketplace add ~/projects/ultracode-gpt
 claude plugin install ultracode-gpt@ultracode-gpt
 ```
 
-Then start a new Code session in the desktop app. A folder marketplace is read
-from the folder itself, so after pulling or editing, `/reload-plugins` in a
-session picks up the change with no reinstall. To scope it to one project, run
+Then start a new Code session in the desktop app. The install is a copy in
+`~/.claude/plugins/cache`, keyed on the version in `plugin/.claude-plugin/plugin.json`:
+after pulling or editing, bump that version, then run
+`claude plugin marketplace update ultracode-gpt` and
+`claude plugin update ultracode-gpt@ultracode-gpt`, and `/reload-plugins` in a
+session. `/reload-plugins` alone reloads the old copy. To scope it to one project, run
 both commands from that project with `--scope local`. To remove it:
 `claude plugin uninstall ultracode-gpt@ultracode-gpt` and
 `claude plugin marketplace remove ultracode-gpt`.

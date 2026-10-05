@@ -1,6 +1,6 @@
 {
   "name": "ultracode-gpt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "GPT mode for ultracode: Workflow agent() calls run on GPT through pi instead of Claude subagents.",
   "author": { "name": "Rolf", "url": "https://github.com/uguryildirim24" },
   "userConfig": {
