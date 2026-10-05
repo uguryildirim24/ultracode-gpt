@@ -30,6 +30,11 @@ export function readSettings(options: Readonly<Record<string, unknown>>): Settin
   }
 }
 
+/** The GPT model's id without its provider: the name the agent type carries. */
+export function gptModelId(s: Settings): string {
+  return s.model.slice(s.model.lastIndexOf('/') + 1)
+}
+
 // ---- the Workflow script rewrite ------------------------------------------
 
 /**

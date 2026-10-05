@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { AGENT_TYPE, PiRun, piPlan, piPrompt, readHarnessRow, readMark, readSettings, rewriteScript, rowText } from './lib.ts'
+import { AGENT_TYPE, PiRun, gptModelId, piPlan, piPrompt, readHarnessRow, readMark, readSettings, rewriteScript, rowText } from './lib.ts'
 import type { Marked, Settings } from './lib.ts'
 
 // One workflow agent as GPT mode follows it, keyed by its agentId. Filled from
@@ -18,9 +18,10 @@ type Agent = {
 const agents = new Map<string, Agent>()
 let running = 0
 
+const MISS_TEXT = 'GPT MODE MISS: the ultracode-gpt hook did not answer this agent.'
 const MISS_PROMPT =
   'You stand in for a GPT agent of ultracode GPT mode, whose hook did not take this run. ' +
-  'Do no work. Reply with exactly: GPT MODE MISS: the ultracode-gpt hook did not answer this agent.'
+  `Do no work. Reply with exactly: ${MISS_TEXT}`
 const OFF_PROMPT =
   'You are an agent of a Claude Code workflow script. Complete the task you are given with your tools; ' +
   'your final message is returned to the script as your result.'
@@ -29,7 +30,7 @@ async function registerType($: any, s: Settings) {
   await $.agent.register(
     s.mode === 'off'
       ? { name: 'gpt', description: 'GPT mode is off: runs this workflow agent on Claude.', prompt: OFF_PROMPT, model: 'inherit' }
-      : { name: 'gpt', description: 'Runs this workflow agent on GPT through pi (ultracode GPT mode). Workflow scripts only.', prompt: MISS_PROMPT, model: 'haiku' },
+      : { name: 'gpt', description: 'Runs this workflow agent on GPT through pi (ultracode GPT mode). Workflow scripts only.', prompt: MISS_PROMPT, model: gptModelId(s) },
   )
 }
 
@@ -161,9 +162,6 @@ export const register: Register = (on, options) => {
 
   // A GPT agent's model request: answered here, from pi, never sent to Claude.
   on('turn.step', async function* ($, e, next) {
-    const a = e.agentId ? agents.get(e.agentId) : undefined
-    if (!a?.mark) return yield* next(e)
-    const schema = a.mark.schema
     const done = (answer: string, toolUses: { name: string; input: unknown }[], stopReason: 'end_turn' | 'tool_use') => ({
       turnId: e.turnId,
       index: e.index,
@@ -172,6 +170,17 @@ export const register: Register = (on, options) => {
       stopReason,
       usage: null,
     })
+    const a = e.agentId ? agents.get(e.agentId) : undefined
+    if (!a?.mark) {
+      // The GPT type names the GPT model, which Claude can't serve: an agent on
+      // it that carries no mark is a miss, answered here, never sent to the API.
+      if (!e.agentId || s.mode === 'off' || e.model.toLowerCase() !== gptModelId(s).toLowerCase()) return yield* next(e)
+      $.ui.toast(MISS_TEXT)
+      yield { kind: 'text', index: 0, text: MISS_TEXT }
+      yield { kind: 'stop', stopReason: 'end_turn', usage: null }
+      return done(MISS_TEXT, [], 'end_turn')
+    }
+    const schema = a.mark.schema
 
     // A later step: the structured answer was taken, or rejected and worth one more try.
     if (a.answered && !(schema && a.rejected && a.attempts < 3)) {

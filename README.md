@@ -138,8 +138,13 @@ read through `$.session.messages`. What a mod does see:
    call for a schema agent. The request never reaches Claude.
 
 The registered agent type `ultracode-gpt:gpt` exists so Workflow accepts the
-name. Its own definition is a fail-safe: haiku, told to reply
-`GPT MODE MISS`, so if the hook ever misses an agent, it's visible and cheap.
+name. Its `model` is the GPT model's id (`gpt-6.1-sol`, or whatever `GPT model`
+is set to), so the agent shows as GPT. That name is a label the hook keys on:
+Claude Code doesn't route it to GPT, and the Anthropic API can't serve it. When
+an agent on that model reaches `turn.step` without a mark (the hook missed
+it), the hook answers `GPT MODE MISS` itself, so a miss is visible and never
+reaches the API. In `off` mode the type registers with `inherit` and runs on
+Claude.
 
 ## Limits
 

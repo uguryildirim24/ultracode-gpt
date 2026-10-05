@@ -120,9 +120,9 @@ async function give($: any, agentId: string, door: string, text: string) {
   })
 }
 
-async function step($: any, agentId: string, index = 0) {
+async function step($: any, agentId: string, index = 0, model = 'claude-haiku-4-5') {
   const chunks: any[] = []
-  const stream = $.turn.step({ turnId: 't1', index, model: 'claude-haiku-4-5', messageCount: 13, agentId })
+  const stream = $.turn.step({ turnId: 't1', index, model, messageCount: 13, agentId })
   while (true) {
     const piece = await stream.next()
     if (piece.done) return { chunks, result: piece.value }
@@ -178,6 +178,16 @@ test('an unmarked agent and the main loop go to Claude untouched', async ($, on)
   await give($, 'a3', 'prompt', TASK_ROW('plain task'))
   expect((await step($, 'a3')).result.answer).toBe('CLAUDE ANSWERED')
   expect((await step($, undefined as any)).result.answer).toBe('CLAUDE ANSWERED')
+  expect(spawned).toHaveLength(0)
+})
+
+test('an unmarked agent on the GPT model is a miss, answered without Claude or pi', async ($, on) => {
+  const spawned: any[] = []
+  beneath(on, spawned, PI_STDOUT('never'))
+  await give($, 'a4', 'prompt', TASK_ROW('plain task'))
+  const { result } = await step($, 'a4', 0, 'gpt-6.1-sol')
+  expect(result).toMatchObject({ stopReason: 'end_turn', toolUses: [] })
+  expect(result.answer).toContain('GPT MODE MISS')
   expect(spawned).toHaveLength(0)
 })
 
