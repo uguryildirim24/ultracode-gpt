@@ -1,3 +1,69 @@
+# Claude-generated development files
 .claude/settings.local.json
 plugin/.claude-plugin/types/
 plugin/tsconfig.json
+
+# Dependencies, build output, and caches
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.npm/
+*.tsbuildinfo
+.DS_Store
+
+# Local environment files (examples may be shared without real credentials)
+.env
+.env.*
+!.env.example
+!.env.*.example
+.venv/
+
+# Credentials and login state, not source extensions
+.secrets/
+.credentials/
+.ssh/
+.codex/
+.claude/.credentials.json
+auth.json
+auth.*.json
+credentials.json
+credentials.*.json
+oauth.json
+oauth.*.json
+tokens.json
+tokens.*.json
+cookies.txt
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.pi/agent/
+.pi/auth.json
+.pi/settings.json
+.pi/trust.json
+.pi/cache/
+
+# Session transcripts, logs, and temporary output
+.claude/projects/
+.claude/debug/
+.claude/cache/
+.claude/sessions/
+.pi/sessions/
+sessions/
+*.jsonl
+*.log
+*.pid
+/tmp/
+/temp/
+/logs/
+
+# Task inputs, downloads, and generated results
+/data/
+/datasets/
+/downloads/
+/results/
+/artifacts/
