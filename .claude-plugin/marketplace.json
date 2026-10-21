@@ -1,14 +1,20 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "ultracode-gpt",
-  "owner": {
-    "name": "Rolf"
-  },
-  "description": "GPT mode for ultracode: Workflow agents on GPT through pi.",
+  "description": "Run Claude Code Workflow agents on GPT through the pi coding agent while Claude coordinates.",
+  "owner": { "name": "Rolf", "url": "https://github.com/uguryildirim24" },
   "plugins": [
     {
       "name": "ultracode-gpt",
       "source": "./plugin",
-      "description": "GPT mode for ultracode: Workflow agents on GPT through pi."
+      "description": "Run Claude Code Workflow agents on GPT through the pi coding agent while Claude coordinates.",
+      "author": { "name": "Rolf", "url": "https://github.com/uguryildirim24" },
+      "homepage": "https://github.com/uguryildirim24/ultracode-gpt",
+      "repository": "https://github.com/uguryildirim24/ultracode-gpt",
+      "license": "MIT",
+      "category": "development",
+      "keywords": ["gpt", "openai", "pi", "workflow", "ultracode", "agents", "multi-model"],
+      "tags": ["multi-model", "workflow"]
     }
   ]
 }
