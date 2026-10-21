@@ -145,6 +145,14 @@ async function waitFor($: any, s: Settings, live: Live, ready: () => boolean, si
   return !signal.aborted
 }
 
+/** Puts a failed hook in the debug log. On re-entry nothing failed, and `$` calls reject. */
+function logFailure($: any, hook: string, next: any, after: string) {
+  if (next.error?.kind === 're-entry') return
+  try {
+    $.ui.log(`GPT mode: the ${hook} hook failed (${next.error?.kind}: ${next.error?.message ?? 'no message'}); ${after}.`, { to: 'debug' })
+  } catch {}
+}
+
 export const register: Register = (on, options) => {
   const s = readSettings(options)
 
@@ -214,6 +222,10 @@ export const register: Register = (on, options) => {
     const rewritten = script ? rewriteScript(script, s.mode) : null
     if (!rewritten) return next(e)
     return next({ ...e, script: rewritten, scriptPath: undefined })
+  }).catch(($, e, next) => {
+    // A failed rewrite runs the Workflow as given: its GPT agents then answer GPT MODE MISS.
+    logFailure($, 'Workflow', next, 'the script runs as written')
+    return next(e)
   })
 
   // A workflow agent's rows: the relayed request, its task (with the GPT mark), its cwd.
@@ -239,6 +251,10 @@ export const register: Register = (on, options) => {
         }
       }
     }
+    return next(e)
+  }).catch(($, e, next) => {
+    // The row is appended either way; GPT mode only reads it.
+    logFailure($, 'session.append', next, 'the row is appended unread')
     return next(e)
   })
 
@@ -361,6 +377,10 @@ export const register: Register = (on, options) => {
     const text = r ? (r.isError ? `Error: ${r.text}` : r.text || '(no output)') : 'pi ended before this tool finished.'
     live.chars += text.length
     return { result: text }
+  }).catch(($, e, next) => {
+    // The pi tool has no body of its own to fall back to: refuse the call.
+    logFailure($, 'pi tool', next, 'the call is refused')
+    return { deny: `GPT mode: the pi tool failed (${next.error.kind}).` }
   })
 
   // Keep the pi tool's schema in the list, so a mirrored call is never one

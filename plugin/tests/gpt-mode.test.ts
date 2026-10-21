@@ -367,3 +367,17 @@ test('only the StructuredOutput verdict asks for a retry, not a mirrored step', 
   expect(spawned).toHaveLength(2)
   expect(spawned[1].argv.at(-1)).toContain('n must be > 1')
 })
+
+// ---- a hook that fails passes the event on -----------------------------------
+
+test('a Workflow hook that throws runs the Workflow as given', async ($, on) => {
+  const seen: any[] = []
+  const logged: string[] = []
+  on('tool.call', ($: any, e: any) => (seen.push(e), { result: 'ok' }))
+  on('ui.log', ($: any, e: any) => (logged.push(e.text), { value: undefined }))
+  // A script that isn't a string makes the rewrite throw.
+  await $.tool.call({ tool: 'Workflow', tool_use_id: 'w3', script: 42 } as any)
+  expect(seen).toHaveLength(1)
+  expect(seen[0].script).toBe(42)
+  expect(logged.join('\n')).toContain('the Workflow hook failed')
+})
