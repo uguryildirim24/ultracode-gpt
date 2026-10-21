@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows
 - Homepage, repository, license and keywords in both manifests; `$schema`,
   category and tags in the marketplace.
 - This changelog.
+- A CI workflow that validates the marketplace and the plugin and runs the
+  tests on every push and pull request.
 
 ### Changed
 

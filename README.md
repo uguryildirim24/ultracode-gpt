@@ -148,7 +148,8 @@ claude plugin validate plugin
 claude plugin test plugin
 ```
 
-Checked with Claude Code 2.1.304 and pi 0.99.1. None of these need a login.
+Checked with Claude Code 2.1.304 and pi 0.99.1. None of these need a login,
+and CI runs all three on every push and pull request.
 
 The 25 tests mock pi's process and its JSONL output, so no model runs. They
 cover the script rewrite, reading the marker and the Workflow harness rows,
