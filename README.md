@@ -26,11 +26,11 @@ return { notes, verdict, review }
 The first two agents run on GPT. The second returns a schema-checked object,
 like any Workflow agent with a `schema`. The third is a normal Claude agent.
 GPT agents show their pi tool calls and results in `/workflows`, the same way
-Claude agents do.
+Claude agents do. The demo reads files from this repo, so run it from a clone.
 
 ## Requirements
 
-- Claude Code with the Workflow tool and function hooks (2.1.287 or later).
+- Claude Code with the Workflow tool and function hooks. Tested with 2.1.304.
 - Node.js, for pi.
 - pi, `@earendil-works/pi-coding-agent`. Tested with 0.99.1.
 - A ChatGPT login for pi's `openai-codex` provider.
@@ -84,6 +84,15 @@ In Claude Code, `/gpt-mode` shows the same login status.
 - `/gpt-mode marked` runs only agents with `agentType: 'ultracode-gpt:gpt'` on GPT. This is the default.
 - `/gpt-mode all` runs every agent of a Workflow script on GPT.
 - `/gpt-mode off` runs every agent on Claude, including ones marked for GPT.
+
+With the default settings and a working pi login, `/gpt-mode` prints:
+
+```text
+GPT mode: marked (Workflow agents with agentType 'ultracode-gpt:gpt' run on GPT).
+Model: openai-codex/gpt-6.1-sol, thinking medium. Web search on, web fetch on.
+pi (pi) openai-codex login: ready.
+Change with /gpt-mode marked|all|off, or the ultracode-gpt rows in /config.
+```
 
 Then ask Claude to run a Workflow script like the demo above, passed inline or
 by `scriptPath`.
@@ -160,6 +169,9 @@ a failed rewrite running the script unchanged.
 
 ```text
 .claude-plugin/marketplace.json   Marketplace entry pointing at plugin/
+.github/workflows/ci.yml          CI: validate and test on push and pull request
+CHANGELOG.md                      Release notes
+LICENSE                           MIT license
 plugin/.claude-plugin/plugin.json Plugin manifest and settings
 plugin/hooks/hooks.json           Loads register.ts
 plugin/hooks/register.ts          Hooks: Workflow rewrite, agent steps, pi tool, /gpt-mode

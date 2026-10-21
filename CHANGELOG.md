@@ -64,6 +64,6 @@ All notable changes to this project are documented here. The format follows
 - pi's stderr in the errors GPT agents report.
 - Mocked tests, a local marketplace entry and a README.
 
-[0.1.2]: https://github.com/uguryildirim24/ultracode-gpt/compare/a7bc6ed...main
+[0.1.2]: https://github.com/uguryildirim24/ultracode-gpt/compare/a7bc6ed...v0.1.2
 [0.1.1]: https://github.com/uguryildirim24/ultracode-gpt/compare/5d5935b...a7bc6ed
 [0.1.0]: https://github.com/uguryildirim24/ultracode-gpt/tree/5d5935b
