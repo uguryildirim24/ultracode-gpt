@@ -1,98 +1,15 @@
 # ultracode-gpt
 
-A Claude Code plugin that runs selected Workflow agents on GPT through pi while Claude coordinates the workflow.
+Run Claude Code Workflow agents on GPT through the pi coding agent while Claude coordinates.
 
-## Why it exists
+## What it does
 
-Claude Code's ultracode mode plans work as JavaScript workflows. The `Workflow`
-tool executes those scripts, and `agent()` launches their workers. This plugin
-lets one script mix GPT workers and Claude reviewers without changing the
-orchestration. It is a model-routing experiment, not a benchmark of model quality.
-
-The implementation rewrites workflow scripts, launches pi, mirrors tool results
-into Claude's agent transcripts, and returns text or schema-shaped answers.
-Existing tests cover that routing with mocked pi execution. Historical notes
-record live text and structured-output runs. Hosted web search remains
-unverified. See `docs/validation.md` for dates, versions, and open checks.
-
-**GPT agents do not inherit Claude Code's permission checks or Bash sandbox.
-Their shell commands and file edits run without approval.** Use an isolated
-environment with only the files, credentials, and network access needed for the
-task. Do not use this plugin with sensitive research or personal records.
-
-## Requirements
-
-- A Claude Code host that exposes `Workflow` and function hooks (mods), including
-  `tool.call`, `session.append`, and `turn.step`. Ordinary shell hooks are not
-  enough. CLI mods are enabled by default from Claude Code 2.1.287. This repo's
-  validation and tests were checked on 2.1.292, not on every newer release.
-- Dynamic workflows enabled in Claude Code's `/config`, and an approved Claude
-  account or API setup for orchestration and unmarked agents.
-- Node.js and npm. The current local check used Node.js 24.19.0.
-- `@earendil-works/pi-coding-agent` on `PATH`. The setup below installs 0.99.1,
-  the version used in the historical live observations and local checks.
-  Other pi versions have not been checked here.
-- An approved ChatGPT subscription login for pi's `openai-codex` provider.
-  Model access depends on the account. This repo does not supply credentials.
-
-No dataset, model weights, or project dependency installation is required.
-Claude Code loads the TypeScript hooks and provides `claude-code/testing`.
-Pi supplies the dependencies for the extensions in `plugin/pi/`.
-
-## Run from a clean clone
-
-Start in the root of a clean clone of this repository. Install Claude Code
-through its official installation instructions if `claude` is not available.
-Then run these shell commands:
-
-```sh
-claude --version
-node --version
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.99.1
-pi --version
-claude plugin validate plugin
-claude plugin test plugin
-```
-
-The npm command needs a writable global npm prefix. Ensure its `bin` directory
-is on `PATH`. The expected pi version is `0.99.1`. No repo build step is needed.
-The validation commands do not require a paid model session.
-
-Authenticate pi interactively:
-
-```sh
-pi --no-session --no-extensions
-```
-
-Inside pi, enter `/login`, choose the OpenAI Codex (`openai-codex`) subscription
-provider, and complete the browser flow. Use `/model` to see authenticated
-models, then exit pi. Back in the shell:
-
-```sh
-pi auth check --provider openai-codex --json --no-refresh
-pi --no-session --no-extensions --list-models openai-codex
-claude --plugin-dir "$PWD/plugin"
-```
-
-An authentication check returns `not_ready` when no login is configured. Do not
-paste tokens into scripts or use credential-printing commands for setup.
-
-In the Claude session:
-
-1. Run `/gpt-mode` to check plugin status and pi authentication.
-2. Open `/config`. Set **GPT model** to an accessible model ID from pi's list.
-   A bare ID uses `openai-codex`; `provider/id` is also accepted. The code's
-   default, `gpt-6.1-sol`, is a historical setting, not a promise of availability.
-3. Set **GPT thinking level** to a level the selected model supports. Set **pi
-   command** to the executable's absolute path if it is not on Claude's `PATH`.
-4. Turn **GPT web search** off for the first run. Its current integration is
-   unverified. Turn **GPT web fetch** off when network fetching is unnecessary.
-5. Ask Claude to run the script below through `Workflow`, using inline `script`
-   or `scriptPath`, not a saved workflow name. Review the script before launch.
-
-### Mixed text and structured output
-
-This is a Workflow script, not a standalone Node.js program:
+Ultracode plans work as Workflow scripts, and each `agent()` call in a script
+starts a Claude subagent. With this plugin, an `agent()` call marked with
+`agentType: 'ultracode-gpt:gpt'` runs on GPT through
+[pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) instead.
+Unmarked agents stay on Claude, so one script can mix GPT workers and Claude
+reviewers:
 
 ```js
 export const meta = { name: 'mixed-model-demo', description: 'Read and review the plugin layout' }
@@ -106,157 +23,152 @@ const review = await agent('Check this summary against plugin/hooks/hooks.json: 
 return { notes, verdict, review }
 ```
 
-Marked agents use GPT. The unmarked review agent uses Claude. A schema agent
-receives a `structured_output` tool. The hook returns its value as a Workflow
-`StructuredOutput` call and permits up to two further pi runs if Workflow
-rejects that value. Agents run in the workflow agent's working directory and
-load pi's applicable `AGENTS.md` and `CLAUDE.md` instructions.
+The first two agents run on GPT. The second returns a schema-checked object,
+like any Workflow agent with a `schema`. The third is a normal Claude agent.
+GPT agents show their pi tool calls and results in `/workflows`, the same way
+Claude agents do.
 
-Use `/workflows` to inspect the run. Successful local validation does not prove
-this live example works on a particular account or host.
+## Requirements
 
-### Optional local marketplace install
+- Claude Code with the Workflow tool and function hooks (2.1.287 or later).
+- Node.js, for pi.
+- pi, `@earendil-works/pi-coding-agent`. Tested with 0.99.1.
+- A ChatGPT login for pi's `openai-codex` provider.
 
-For a persistent installation, run from the clone root:
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add uguryildirim24/ultracode-gpt
+/plugin install ultracode-gpt@ultracode-gpt
+```
+
+Or from a shell:
 
 ```sh
-claude plugin marketplace add "$PWD"
+claude plugin marketplace add uguryildirim24/ultracode-gpt
 claude plugin install ultracode-gpt@ultracode-gpt
 ```
 
-For the directory-backed CLI installation checked on October 8, 2026 with
-Claude Code 2.1.292,
-`claude plugin update ultracode-gpt@ultracode-gpt` reported that the plugin is
-read directly from its folder. Code edits take effect in the next session or
-after `/reload-plugins`. A version bump is not needed for that reload.
-
-Historical desktop observations used engine 2.1.286 and a cached plugin copy.
-Those notes recommended bumping the version in
-`plugin/.claude-plugin/plugin.json`, updating the local marketplace and plugin,
-and starting a new local Code session:
+To try it without installing, run Claude Code from a clone with the plugin
+folder loaded for that session:
 
 ```sh
-claude plugin marketplace update ultracode-gpt
-claude plugin update ultracode-gpt@ultracode-gpt
+git clone https://github.com/uguryildirim24/ultracode-gpt
+cd ultracode-gpt
+claude --plugin-dir ./plugin
 ```
 
-The desktop app must be able to launch the configured pi executable and use the
-same pi configuration directory as the shell login. Desktop installation was
-not repeated during this cleanup. Its historical cache instructions do not
-describe the directory-backed CLI behavior above.
+After installing or updating the plugin, start a new session.
+
+## Set up pi login
+
+```sh
+npm install -g @earendil-works/pi-coding-agent@0.99.1
+pi
+```
+
+In pi, run `/login`, pick OpenAI Codex, and finish the browser sign-in. Then
+check it from the shell:
+
+```sh
+pi auth check --provider openai-codex
+```
+
+In Claude Code, `/gpt-mode` shows the same login status.
+
+## Usage
+
+- `/gpt-mode` shows the current mode, model, web tools and pi login.
+- `/gpt-mode marked` runs only agents with `agentType: 'ultracode-gpt:gpt'` on GPT. This is the default.
+- `/gpt-mode all` runs every agent of a Workflow script on GPT.
+- `/gpt-mode off` runs every agent on Claude, including ones marked for GPT.
+
+Then ask Claude to run a Workflow script like the demo above, passed inline or
+by `scriptPath`.
 
 ## Configuration
 
-`/gpt-mode marked|all|off` selects routing. `/gpt-mode` alone shows status.
-The same options appear in Claude Code's `/config`:
+| Setting | Key | Default | Meaning |
+|---|---|---|---|
+| GPT mode | `mode` | `marked` | `marked`, `all` or `off`, as `/gpt-mode` sets it |
+| GPT model | `model` | `gpt-6.1-sol` | pi model id on `openai-codex`, or `provider/id` |
+| GPT thinking level | `thinking` | `medium` | `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` |
+| GPT web search | `webSearch` | on | Give GPT agents OpenAI's hosted web search |
+| GPT web fetch | `webFetch` | on | Give GPT agents a `web_fetch` tool (HTTP GET, page as text) |
+| pi command | `piPath` | `pi` | The pi executable to run; use a full path if `pi` isn't on Claude's `PATH` |
 
-| Setting | Default | Meaning |
-|---|---|---|
-| GPT mode | `marked` | Only `ultracode-gpt:gpt` agents use pi |
-| GPT model | `gpt-6.1-sol` | A pi model ID, or `provider/id` |
-| GPT thinking level | `medium` | A pi thinking level supported by the model |
-| GPT web search | on | Inject a hosted `web_search` request tool |
-| GPT web fetch | on | Enable the HTTP `web_fetch` extension |
-| pi command | `pi` | Executable to launch |
+Change them in `/config`. Set GPT model to any id from
+`pi --list-models openai-codex`.
 
-`all` marks every agent in scripts the hook rewrites. `off` leaves agents on
-Claude, including the registered GPT agent type, which then inherits the Claude
-model. Named workflows and nested workflow calls are not rewritten. In those
-unsupported workflows, ordinary agents stay on Claude. With GPT mode enabled,
-agents explicitly selecting `ultracode-gpt:gpt` return `GPT MODE MISS` when they
-lack the routing marker. They do not fall back to Claude.
+## How it works
 
-Claude stores plugin configuration under `pluginConfigs` in its settings.
-Pi stores login credentials in its own `auth.json`, normally outside the clone
-in `~/.pi/agent`. `PI_CODING_AGENT_DIR` can select another private configuration
-directory. Use the same value for login and the process launching Claude.
-`UCGPT_SCHEMA` is set by the plugin for a structured run; it is not a credential
-and requires no manual setup. The plugin does not load `.env` files.
+- A `tool.call` hook on Workflow rewrites the script before it runs: GPT
+  `agent()` calls get a marker line at the head of their prompt.
+- The plugin registers the `ultracode-gpt:gpt` agent type. Its `turn.step`
+  hook reads the marker from the agent's task and runs `pi -p --mode json` in
+  the agent's working directory, so the request never goes to Claude.
+- Each pi turn that calls tools is mirrored into the agent's transcript as a
+  call to the plugin's `pi` tool, answered with pi's own tool result.
+- pi's final message is the agent's result.
+- A schema agent gets a `structured_output` tool in pi. Its value comes back
+  as a `StructuredOutput` call. If the Workflow rejects it, pi runs again with
+  the error, up to two retries.
 
-## Project layout
+A GPT agent that reaches the hook without the marker answers `GPT MODE MISS`
+instead of falling back to Claude.
 
-```text
-.claude-plugin/marketplace.json   Local marketplace pointing at plugin/
-plugin/.claude-plugin/plugin.json   Plugin identity and configuration
-plugin/hooks/hooks.json          Function-hook module registration
-plugin/hooks/register.ts         Agent lifecycle, routing, and tool mirroring
-plugin/hooks/lib.ts              Script rewriting and pi JSONL parsing
-plugin/pi/                      Web search, web fetch, structured output
-plugin/tests/gpt-mode.test.ts    Existing mocked routing and hook tests
-docs/validation.md              Validation record and unresolved live checks
-LICENSE                         MIT license
-```
+## Safety
 
-There are no scientific datasets or result figures in this repo. Workflows
-supply their own inputs. Keep task data outside the clone or in the ignored
-`data/` directory. Put generated outputs in ignored `results/` or `artifacts/`.
-The web tools retrieve content at runtime; no fetched pages are bundled.
+GPT agents run pi with `bash`, `write` and `edit`. They do not inherit Claude
+Code's permission checks or its Bash sandbox, so their commands and edits run
+without asking. Run workflows in a directory you don't mind them editing.
+`web_fetch` follows redirects and does not block loopback or private-network
+URLs, so it can reach services on your local network.
 
-Pi runs with `--no-session --no-extensions` and only the plugin's explicit
-extensions. This disables pi session persistence, not Claude transcripts or
-other runtime logs. Mirrored prompts, tool arguments, and results can contain
-private content. Do not publish those logs. Ignoring files does not prevent
-agents from reading or transmitting them.
+## Limits
 
-## Limits and known gaps
+- Only scripts with a literal `export const meta = { ... }`, passed inline or
+  by `scriptPath`, are rewritten. Named workflows are not, and neither is a
+  Workflow call made by an agent.
+- The rewrite is a text scan, not a JavaScript parser.
+- GPT token usage isn't reported back to Claude.
+- Mirroring stops after 100 steps or 150,000 characters per pi run. Tool
+  results and step text are clipped to 2,000 characters. pi keeps working
+  past the cap, and the agent still gets its answer.
+- Hosted web search is injected into pi's requests, but nothing checks that
+  the model actually retrieved sources.
 
-- Only scripts with a literal `export const meta = { ... }` can be rewritten.
-  Named workflows and nested `workflow()` children are not rewritten. Ordinary
-  agents stay on Claude. With GPT mode enabled, explicitly GPT-labelled agents
-  without a routing marker return `GPT MODE MISS`, not a Claude answer.
-- The parser is a text scanner, not a complete JavaScript parser. Complex script
-  syntax may not be rewritten correctly.
-- The hook reads Workflow task and environment rows by their wording. A host
-  update can break detection. `GPT MODE MISS` is the intended visible response
-  when a GPT-labelled agent reaches the hook without a marker.
-- GPT `bash`, `write`, and `edit` are ungated. Claude permissions and its Bash
-  sandbox are not a security boundary for the spawned pi process. Pi's working
-  directory does not confine file access. MCP servers are not passed through.
-- Hosted web search only injects `{ type: 'web_search' }` into compatible request
-  payloads. Backend acceptance and a model saying it searched do not establish
-  retrieved sources or factual correctness. Other providers are unverified.
-  `/gpt-mode` always checks `openai-codex` authentication and prefixes its model
-  display with that provider, even when a different `provider/id` is selected.
-- `web_fetch` follows redirects and does not block loopback or private-network
-  URLs. It can reach internal services. It buffers the complete response before
-  reducing HTML and truncating output (40,000 characters by default). That limit
-  is not a download or memory cap. Requests have a 30-second timeout.
-- GPT token usage is not returned to Claude (`usage` is null). Missing counts
-  are not free execution. Claude orchestration still uses its plan or API, and
-  GPT work uses the selected provider's subscription limits or API billing.
-- Pi thinking is not mirrored. A long think can leave the transcript quiet.
-  Mirroring stops after 100 steps or 150,000 characters per pi run. Tool-result
-  text is clipped to 2,000 characters. Pi can continue after mirroring stops.
-- Tests mock pi execution. Current live text output, structured output, hosted
-  web search, cancellation during a pending step, and desktop setup still need
-  approved-account checks. There are no model-quality or cost benchmarks.
-
-## Development and validation
+## Development
 
 ```sh
+claude plugin validate .
 claude plugin validate plugin
 claude plugin test plugin
 ```
 
-On October 8, 2026 (local date), Claude Code 2.1.292 validated the unchanged
-plugin code and all 24 existing tests passed. Pi was installed independently at
-0.99.1 and its version command worked. Local marketplace installation and
-update commands also passed. Authentication was intentionally absent in that
-isolated configuration, so model listing returned no models. Interactive login,
-Claude sessions, live workflows, and desktop setup were skipped. No paid model
-call was made. See `docs/validation.md`.
+Checked with Claude Code 2.1.304 and pi 0.99.1. None of these need a login.
 
-## How this was built
+The 25 tests mock pi's process and its JSONL output, so no model runs. They
+cover the script rewrite, reading the marker and the Workflow harness rows,
+pi's arguments, parsing pi's output, text and structured answers, the
+StructuredOutput retry, step mirroring, refusing `pi` tool calls the plugin
+didn't make, stopping pi when its agent ends, the `GPT MODE MISS` answer, and
+a failed rewrite running the script unchanged.
 
-AI coding agents did much of the implementation under Rolf's direction. Rolf
-set the public-release requirements, including portable setup, private
-credentials, and no agent commits. Earlier development notes record hook and
-live-agent checks, but do not identify which checks Rolf personally ran or
-establish a line-by-line review. Coding agents reran the existing validation and
-mocked tests for this cleanup. Rolf's final diff review and new live checks are
-still pending.
+```text
+.claude-plugin/marketplace.json   Marketplace entry pointing at plugin/
+plugin/.claude-plugin/plugin.json Plugin manifest and settings
+plugin/hooks/hooks.json           Loads register.ts
+plugin/hooks/register.ts          Hooks: Workflow rewrite, agent steps, pi tool, /gpt-mode
+plugin/hooks/lib.ts               Script rewrite, harness rows, pi argv, pi JSONL parsing
+plugin/pi/                        pi extensions: web search, web fetch, structured output
+plugin/tests/gpt-mode.test.ts     Mocked tests
+```
 
 ## License
 
-MIT. See `LICENSE`. Dependencies retain their own licenses. No paper or preprint
-is included or cited by the repository.
+MIT. See [LICENSE](LICENSE).
+
+Built with Claude Code.
