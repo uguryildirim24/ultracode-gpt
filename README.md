@@ -69,8 +69,9 @@ npm install -g @earendil-works/pi-coding-agent@0.99.1
 pi
 ```
 
-In pi, run `/login`, pick OpenAI Codex, and finish the browser sign-in. Then
-check it from the shell:
+In pi, run `/login`, pick OpenAI (ChatGPT Plus/Pro), choose browser login and
+finish the sign-in. Without a browser, choose device code login. Then check it
+from the shell:
 
 ```sh
 pi auth check --provider openai-codex
@@ -108,8 +109,9 @@ by `scriptPath`.
 | GPT web fetch | `webFetch` | on | Give GPT agents a `web_fetch` tool (HTTP GET, page as text) |
 | pi command | `piPath` | `pi` | The pi executable to run; use a full path if `pi` isn't on Claude's `PATH` |
 
-Change them in `/config`. Set GPT model to any id from
-`pi --list-models openai-codex`.
+Change them with `/plugin configure ultracode-gpt@ultracode-gpt` in Claude
+Code, or pass `--config KEY=VALUE` to `claude plugin install`. Set GPT model to
+any id from `pi --list-models openai-codex`.
 
 ## How it works
 
@@ -157,8 +159,8 @@ claude plugin validate plugin
 claude plugin test plugin
 ```
 
-Checked with Claude Code 2.1.304 and pi 0.99.1. None of these need a login,
-and CI runs all three on every push and pull request.
+None of these need a login, and CI runs all three on every push and pull
+request.
 
 The 25 tests mock pi's process and its JSONL output, so no model runs. They
 cover the script rewrite, reading the marker and the Workflow harness rows,
@@ -170,6 +172,7 @@ a failed rewrite running the script unchanged.
 ```text
 .claude-plugin/marketplace.json   Marketplace entry pointing at plugin/
 .github/workflows/ci.yml          CI: validate and test on push and pull request
+.gitignore                        Ignore rules
 CHANGELOG.md                      Release notes
 LICENSE                           MIT license
 plugin/.claude-plugin/plugin.json Plugin manifest and settings
